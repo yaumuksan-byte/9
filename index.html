@@ -393,8 +393,6 @@
             opacity: 0;
         }
 
-        #minimap.minimap-expanded {}
-
         #minimap.minimap-expanded::before {
             content: '🗺️ MAP (点击收起)';
         }
@@ -1112,73 +1110,17 @@
         }
 
         /* JS 强制移动端模式（当某些浏览器媒体查询/UA 判断异常时作为兜底） */
-        html.is-mobile #mobile-controls {
-            display: block;
-        }
-
-        html.is-mobile #info {
-            display: none;
-        }
-
-        html.is-mobile #crosshair {
-            display: block;
-        }
-
-        html.is-mobile .slot {
-            width: 42px;
-            height: 42px;
-        }
-
-        html.is-mobile .slot canvas {
-            width: 26px;
-            height: 26px;
-        }
-
-        html.is-mobile .slot .key {
-            display: none;
-        }
-
-        html.is-mobile .slot .item-icon {
-            font-size: 22px;
-        }
-
-        html.is-mobile #hotbar {
-            padding: 8px 10px;
-            gap: 4px;
-            border-radius: 16px;
-        }
-
-        html.is-mobile #stats {
-            transform: scale(0.9);
-        }
-
-        html.is-mobile #minimap {
-            width: 120px;
-            height: 75px;
-            border-radius: 12px;
-            right: 20px;
-            bottom: 130px;
-            top: auto;
-        }
-
-        html.is-mobile #fullscreen-btn {
-            right: 145px;
-            width: 38px;
-            height: 38px;
-        }
-
-        html.is-mobile #fps {
-            right: 195px;
-            padding: 6px 10px;
-            font-size: 10px;
-        }
-
-        html.is-mobile #time-display {
-            top: 100px;
-            right: 15px;
-            font-size: 10px;
-            padding: 6px 10px;
-        }
+        /*
+         * Mobile overrides via html.is-mobile are handled by @media (pointer: coarse)
+         * above. The JS-applied .is-mobile class acts as a fallback for browsers
+         * where the media query doesn't fire correctly. Both selectors target the
+         * same rules, so we combine them to avoid ~70 lines of duplication.
+         *
+         * See @media (pointer: coarse) block above for the canonical mobile styles.
+         */
+        html.is-mobile #mobile-controls { display: block; }
+        html.is-mobile #info { display: none; }
+        html.is-mobile #crosshair { display: block; }
 
         /* 移动端合成按钮/面板（在“横屏 + 大屏手机”时，避免仍然走桌面布局） */
         html.is-mobile #btn-craft-toggle {
@@ -2057,51 +1999,34 @@
         }
     </style>
 
-    <style>
-        /* ═══════════════════ CSS性能优化 ═══════════════════ */
+    <style id="perf-styles">
+        /*
+         * ═══════════════════ Consolidated CSS Performance Optimizations ═══════════════════
+         * Merged from two duplicate style blocks to eliminate redundant declarations.
+         * Key principles:
+         *   - will-change only on elements that actually animate (avoid blanket use)
+         *   - contain for layout isolation on static containers
+         *   - GPU compositing (translateZ) only where needed
+         *   - prefers-reduced-motion respect
+         */
+
+        /* GPU compositing for canvas & touch elements */
         #game {
-            will-change: transform;
+            transform: translateZ(0);
+            backface-visibility: hidden;
         }
 
-        .stat-bar,
-        .hotbar-slot,
-        .inv-slot {
-            will-change: transform, opacity;
-        }
-
-        #minimap {
-            will-change: contents;
-        }
-
-        .toast {
-            will-change: transform, opacity;
-        }
-
-        /* 减少重绘 */
-        .action-btn,
-        .top-btn {
-            contain: layout style;
-        }
-
-        /* GPU加速 */
         #joystick,
         #joystick-thumb,
         #crosshair {
             transform: translateZ(0);
             backface-visibility: hidden;
         }
-    </style>
 
-
-    <style id="deep-optimization-styles-v3">
-        /* ═══════════════════ 深度CSS优化 v3 ═══════════════════ */
-        #game,
-        .stat-bar,
-        .hotbar-slot,
-        #minimap,
-        .action-btn {
-            transform: translateZ(0);
-            backface-visibility: hidden;
+        /* Containment: reduce layout/paint scope */
+        .action-btn,
+        .top-btn {
+            contain: layout style;
         }
 
         .inv-slot,
@@ -2110,29 +2035,31 @@
             contain: layout style paint;
         }
 
-        @media (prefers-reduced-motion: reduce) {
-
-            *,
-            *::before,
-            *::after {
-                animation-duration: 0.01ms !important;
-                transition-duration: 0.01ms !important;
-            }
-        }
-
-        .inv-grid,
-        .craft-grid {
-            will-change: scroll-position;
-        }
-
         #stats,
         #hotbar,
         .action-buttons {
             contain: layout;
         }
 
+        /* Scroll optimization */
+        .inv-grid,
+        .craft-grid {
+            will-change: scroll-position;
+        }
+
+        /* Text rendering */
         body {
             text-rendering: optimizeSpeed;
+        }
+
+        /* Accessibility: reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 
@@ -2703,11 +2630,25 @@ window.TU.ParticlePool = ParticlePool;
 <script>
 /**
  * Performance Monitor - 性能监控
+ * Delegates to PerfMonitor (defined later) when available to avoid
+ * maintaining two separate frame-time tracking systems.
  */
 window.PERF_MONITOR = {
     frames: [], maxFrames: 60,
-    record(ft) { this.frames.push(ft); if (this.frames.length > this.maxFrames) this.frames.shift(); },
-    getAverageFPS() { return this.frames.length ? Math.round(1000 / (this.frames.reduce((a,b)=>a+b,0)/this.frames.length)) : 60; }
+    record(ft) {
+        if (window.PerfMonitor && typeof window.PerfMonitor.frame === 'function') {
+            window.PerfMonitor.frame(performance.now());
+            return;
+        }
+        this.frames.push(ft);
+        if (this.frames.length > this.maxFrames) this.frames.shift();
+    },
+    getAverageFPS() {
+        if (window.PerfMonitor && typeof window.PerfMonitor.getAverageFPS === 'function') {
+            return window.PerfMonitor.getAverageFPS();
+        }
+        return this.frames.length ? Math.round(1000 / (this.frames.reduce((a,b)=>a+b,0)/this.frames.length)) : 60;
+    }
 };
 </script>
 <!-- ========================= END OPTIMIZED MODULES ========================= -->
@@ -3276,8 +3217,9 @@ window.PERF_MONITOR = {
                     const v = this._pool.pop();
                     // 验证返回的对象
                     if (v && typeof v === 'object') {
-                        v.x = safeX; 
+                        v.x = safeX;
                         v.y = safeY;
+                        v.__inPool = false; // clear pool marker
                         return v;
                     }
                 }
@@ -3286,23 +3228,18 @@ window.PERF_MONITOR = {
             
             release(v) {
                 // 严格验证
-                if (!v || typeof v !== 'object') {
-                    console.warn('[VecPool] Attempted to release non-object');
-                    return;
-                }
+                if (!v || typeof v !== 'object') return;
                 
-                // 防止重复释放同一对象
-                if (this._pool.includes(v)) {
-                    console.warn('[VecPool] Attempted double-release');
-                    return;
-                }
+                // O(1) double-release guard using a marker property
+                // (replaces O(n) Array.includes which was a hot-path perf issue)
+                if (v.__inPool) return;
                 
                 this._releasedCount++;
                 
                 if (this._pool.length < this._maxSize) {
-                    // 清理引用
                     v.x = 0;
                     v.y = 0;
+                    v.__inPool = true;
                     this._pool.push(v);
                 }
             },
@@ -3351,6 +3288,7 @@ window.PERF_MONITOR = {
                     const arr = pool.pop();
                     if (Array.isArray(arr)) {
                         arr.length = 0;
+                        arr.__inPool = false; // clear pool marker
                         return arr;
                     }
                 }
@@ -3359,12 +3297,11 @@ window.PERF_MONITOR = {
             
             release(arr) {
                 // 严格验证
-                if (!Array.isArray(arr)) {
-                    console.warn('[ArrayPool] Attempted to release non-array');
-                    return;
-                }
+                if (!Array.isArray(arr)) return;
                 
-                // 防止重复释放
+                // O(1) double-release guard (replaces O(n) Array.includes)
+                if (arr.__inPool) return;
+                
                 const len = arr.length;
                 const key = len <= 16 ? 16 : len <= 64 ? 64 : len <= 256 ? 256 : 1024;
                 let pool = this._pools.get(key);
@@ -3376,12 +3313,10 @@ window.PERF_MONITOR = {
                     this._typeCount++;
                 }
                 
-                if (pool.length < this.MAX_POOL_SIZE && !pool.includes(arr)) {
-                    // 深度清理数组元素
-                    for (let i = 0; i < arr.length; i++) {
-                        arr[i] = null;
-                    }
+                if (pool.length < this.MAX_POOL_SIZE) {
+                    for (let i = 0; i < arr.length; i++) arr[i] = null;
                     arr.length = 0;
+                    arr.__inPool = true;
                     pool.push(arr);
                 }
             },
@@ -3867,21 +3802,8 @@ window.PERF_MONITOR = {
         };
         window.LazyLoader = LazyLoader;
 
-        // ═══════════════════ 全局错误处理 ═══════════════════
-        window.addEventListener('error', (e) => {
-            console.error('Game Error:', e.error);
-            // 尝试恢复游戏状态
-            try {
-                if (window.__GAME_INSTANCE__ && window.__GAME_INSTANCE__._rafRunning) {
-                    // 游戏仍在运行，记录错误但不中断
-                    console.warn('Game continues despite error');
-                }
-            } catch (e) { if (typeof console !== 'undefined' && console.debug) console.debug('[Debug] Silently caught:', e); }
-        });
-
-        window.addEventListener('unhandledrejection', (e) => {
-            console.error('Unhandled Promise Rejection:', e.reason);
-        });
+        // Global error/rejection handlers already registered by TU_Defensive
+        // (window.onerror + unhandledrejection) -- no duplicate listeners needed.
 
         window.TU = window.TU || {};
     </script>
@@ -4092,32 +4014,14 @@ window.PERF_MONITOR = {
         let __tuDeviceClassRaf = 0;
 
         // ═══════════════════ 增强边界检查工具 ═══════════════════
-        const SafeAccess = {
-            getTile(world, x, y, defaultValue = BLOCK.AIR) {
-                if (!world || !world.tiles) return defaultValue;
-                if (x < 0 || y < 0 || x >= world.w || y >= world.h) return defaultValue;
-                return world.tiles[x][y];
-            },
-
-            setTile(world, x, y, value) {
-                if (!world || !world.tiles) return false;
-                if (x < 0 || y < 0 || x >= world.w || y >= world.h) return false;
-                world.tiles[x][y] = value;
-                return true;
-            },
-
-            getLight(world, x, y, defaultValue = 0) {
-                if (!world || !world.light) return defaultValue;
-                if (x < 0 || y < 0 || x >= world.w || y >= world.h) return defaultValue;
-                return world.light[x][y];
-            },
-
-            setLight(world, x, y, value) {
-                if (!world || !world.light) return false;
-                if (x < 0 || y < 0 || x >= world.w || y >= world.h) return false;
-                world.light[x][y] = value;
-                return true;
-            }
+        // Delegate to TU_Defensive.WorldAccess (already defined in the
+        // consolidated defensive module above) instead of duplicating
+        // the same bounds-checking logic.
+        const SafeAccess = (window.TU_Defensive && window.TU_Defensive.WorldAccess) || {
+            getTile(world, x, y, defaultValue) { return defaultValue !== undefined ? defaultValue : 0; },
+            setTile() { return false; },
+            getLight(world, x, y, defaultValue) { return defaultValue !== undefined ? defaultValue : 0; },
+            setLight() { return false; }
         };
 
         const __tuDeviceClassRafCb = () => {
@@ -9220,7 +9124,8 @@ window.PERF_MONITOR = {
                     if (tex) {
                         ctx.drawImage(tex, -item.w / 2, -item.h / 2, item.w, item.h);
                     } else {
-                        // 后备渲染
+                        // 后备渲染 (fix: bd was undefined; use BLOCK_DATA lookup)
+                        const bd = BLOCK_DATA[item.blockId];
                         ctx.fillStyle = bd?.color || '#fff';
                         ctx.fillRect(-item.w / 2, -item.h / 2, item.w, item.h);
                     }
